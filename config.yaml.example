@@ -1,0 +1,21 @@
+identity:
+  soul: /Users/jbecker/iris-workspace/SOUL.md
+  user_model: /Users/jbecker/iris-workspace/USER.md
+
+server:
+  port: 8850
+  host: 127.0.0.1
+
+confidence:
+  decay_half_life_days: 14
+  archive_threshold: 0.1
+
+connectors:
+  claude-code:
+    type: hook
+    status: active
+    permissions: read-write
+  hermes:
+    type: api
+    status: active
+    permissions: read-write
