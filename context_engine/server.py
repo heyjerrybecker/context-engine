@@ -175,6 +175,37 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
         rel_id = graph.add_relationship(rel)
         return jsonify({"relationship_id": rel_id})
 
+    # --- Ingest (extraction from conversation turns) ---
+
+    @app.post("/context/ingest")
+    def ingest():
+        from context_engine.extraction import extract_entities
+        data = request.get_json()
+        user_msg = data.get("user_message", "")
+        assistant_msg = data.get("assistant_message", "")
+        session_id = data.get("session_id", "")
+        source_agent = data.get("source_agent", "unknown")
+
+        extracted = extract_entities(user_msg, assistant_msg,
+                                     source_session=session_id,
+                                     source_agent=source_agent)
+        entity_ids = []
+        for e_data in extracted:
+            entity = Entity(
+                type=e_data["type"],
+                content=e_data["content"],
+                confidence=e_data.get("confidence", 0.5),
+                source_agent=source_agent,
+                source_session=session_id,
+            )
+            eid = graph.add_entity(entity)
+            entity_ids.append(eid)
+
+        return jsonify({
+            "entities_extracted": len(entity_ids),
+            "entity_ids": entity_ids,
+        })
+
     return app
 
 

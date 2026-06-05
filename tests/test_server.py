@@ -139,3 +139,27 @@ class TestBriefingAPI:
         assert resp.status_code == 200
         data = resp.get_json()
         assert "briefing" in data
+
+
+class TestIngestAPI:
+    def test_ingest_extracts_decision(self, client):
+        client.post("/context/session/start", json={"agent": "test", "session_id": "s1"})
+        resp = client.post("/context/ingest", json={
+            "user_message": "Let's go with SQLite for storage.",
+            "assistant_message": "Good choice.",
+            "session_id": "s1",
+            "source_agent": "claude-code",
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["entities_extracted"] >= 1
+
+    def test_ingest_boring_turn_extracts_nothing(self, client):
+        resp = client.post("/context/ingest", json={
+            "user_message": "Hi",
+            "assistant_message": "Hello!",
+            "session_id": "s1",
+            "source_agent": "test",
+        })
+        assert resp.status_code == 200
+        assert resp.get_json()["entities_extracted"] == 0
