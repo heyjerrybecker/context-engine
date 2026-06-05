@@ -24,7 +24,7 @@ def _classify_chunk(client, messages: list) -> list:
     prompt = f"Classify each message:\n\n{formatted}"
 
     response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model="claude-haiku-4-5@20251001",
         max_tokens=2048,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
