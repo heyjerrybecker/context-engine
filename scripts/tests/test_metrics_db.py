@@ -71,3 +71,11 @@ def test_insert_labels(conn):
     ])
     rows = conn.execute("SELECT label FROM message_labels WHERE session_id='abc123' ORDER BY message_index").fetchall()
     assert [r[0] for r in rows] == ["context-restoration", "new-work"]
+
+
+def test_insert_labels_enforces_foreign_key(conn):
+    import sqlite3 as sqlite3_module
+    with pytest.raises(sqlite3_module.IntegrityError):
+        insert_labels(conn, "nonexistent_session", [
+            {"index": 0, "role": "user", "label": "test", "token_count": 50, "is_correction": False}
+        ])
