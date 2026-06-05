@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS session_metrics (
     first_new_work_message_index INTEGER,
     cor REAL,
     cr REAL,
+    is_marathon BOOLEAN DEFAULT FALSE,
+    length_bucket TEXT,
     created_at TEXT
 );
 
@@ -35,6 +37,12 @@ def init_db(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    # Migrate existing DBs that predate is_marathon/length_bucket columns
+    for col, typedef in [("is_marathon", "BOOLEAN DEFAULT FALSE"), ("length_bucket", "TEXT")]:
+        try:
+            conn.execute(f"ALTER TABLE session_metrics ADD COLUMN {col} {typedef}")
+        except sqlite3.OperationalError:
+            pass  # column already exists
     conn.commit()
     return conn
 
@@ -44,13 +52,14 @@ def insert_session(conn: sqlite3.Connection, row: dict):
         """INSERT OR REPLACE INTO session_metrics
         (session_id, date, session_type, agent, total_messages, total_tokens,
          context_messages, context_tokens, warmup_message_count, correction_count,
-         first_new_work_message_index, cor, cr, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+         first_new_work_message_index, cor, cr, is_marathon, length_bucket, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             row["session_id"], row["date"], row["session_type"], row["agent"],
             row["total_messages"], row["total_tokens"], row["context_messages"],
             row["context_tokens"], row["warmup_message_count"], row["correction_count"],
-            row["first_new_work_message_index"], row["cor"], row["cr"], row["created_at"],
+            row["first_new_work_message_index"], row["cor"], row["cr"],
+            row.get("is_marathon", False), row.get("length_bucket"), row["created_at"],
         ),
     )
     conn.commit()

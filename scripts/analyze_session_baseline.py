@@ -43,6 +43,17 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+def length_bucket(n: int) -> str:
+    # Sessions capped at 100 msgs are presumed marathon (actual depth unknown, likely 200+)
+    if n >= 100:
+        return "200+"
+    if n >= 50:
+        return "50-199"
+    if n >= 10:
+        return "10-49"
+    return "<10"
+
+
 def compute_metrics(messages: list, labels: list) -> dict:
     label_map = {l["index"]: l["label"] for l in labels}
     total_messages = len(messages)
@@ -134,11 +145,14 @@ def main():
 
         metrics = compute_metrics(messages, labels_raw)
 
+        n = metrics["total_messages"]
         insert_session(conn, {
             "session_id": session["session_id"],
             "date": session["date"],
             "session_type": "cold",
             "agent": session["agent"],
+            "is_marathon": n >= 100,
+            "length_bucket": length_bucket(n),
             "created_at": datetime.now(timezone.utc).isoformat(),
             **metrics,
         })
