@@ -1,6 +1,7 @@
 """Flask HTTP API for the Context Engine."""
 
 from flask import Flask, request, jsonify
+from flask_caching import Cache
 
 from context_engine.config import load_config, ContextEngineConfig
 from context_engine.schema import init_db
@@ -17,6 +18,17 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
     init_db(db)
     graph = KnowledgeGraph(db)
 
+    from context_engine.worker import start_worker as _start_worker
+    _start_worker(db)
+
+    if cfg.redis_url:
+        app.config["CACHE_TYPE"] = "RedisCache"
+        app.config["CACHE_REDIS_URL"] = cfg.redis_url
+    else:
+        app.config["CACHE_TYPE"] = "SimpleCache"
+    app.config["CACHE_DEFAULT_TIMEOUT"] = cfg.cache_default_timeout
+    cache = Cache(app)
+
     @app.get("/context/health")
     def health():
         return jsonify({
@@ -26,6 +38,7 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
         })
 
     @app.get("/context/identity")
+    @cache.cached(timeout=300)
     def identity():
         return jsonify({
             "soul": cfg.load_soul(),
@@ -33,6 +46,7 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
         })
 
     @app.get("/context/briefing")
+    @cache.cached(timeout=60)
     def briefing():
         text = generate_briefing(graph)
         active = graph.list_threads()
@@ -51,6 +65,7 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
         session_id = data.get("session_id", "")
         agent = data.get("agent", "unknown")
         graph.start_session(session_id, agent)
+        cache.clear()
         text = generate_briefing(graph)
         active = graph.list_threads()
         return jsonify({
@@ -68,6 +83,7 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
         session_id = data.get("session_id", "")
         summary = data.get("summary")
         graph.end_session(session_id, summary=summary)
+        cache.clear()
         text = generate_briefing(graph)
         return jsonify({
             "briefing_written": True,
@@ -91,9 +107,11 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
             role=data.get("role"),
         )
         entity_id = graph.add_entity(entity)
+        cache.clear()
         return jsonify({"entity_id": entity_id, "thread_assigned": entity.thread_id})
 
     @app.get("/context/entity/<entity_id>")
+    @cache.cached(timeout=60)
     def get_entity(entity_id):
         entity, rels = graph.get_entity_with_relationships(entity_id)
         if not entity:
@@ -107,9 +125,11 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
     def update_entity(entity_id):
         data = request.get_json()
         graph.update_entity(entity_id, **data)
+        cache.clear()
         return jsonify({"entity_id": entity_id, "updated_fields": list(data.keys())})
 
     @app.get("/context/search")
+    @cache.cached(timeout=30, query_string=True)
     def search():
         q = request.args.get("q", "")
         if not q:
@@ -131,9 +151,11 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
             status=data.get("status", "active"),
         )
         thread_id = graph.add_thread(thread)
+        cache.clear()
         return jsonify({"thread_id": thread_id})
 
     @app.get("/context/threads")
+    @cache.cached(timeout=30, query_string=True)
     def list_threads():
         status = request.args.get("status")
         from context_engine.models import ThreadStatus
@@ -145,6 +167,7 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
         })
 
     @app.get("/context/thread/<thread_id>")
+    @cache.cached(timeout=60)
     def get_thread(thread_id):
         thread = graph.get_thread(thread_id)
         if not thread:
@@ -159,6 +182,7 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
     def update_thread(thread_id):
         data = request.get_json()
         graph.update_thread(thread_id, **data)
+        cache.clear()
         return jsonify({"thread_id": thread_id, "updated_status": data.get("status")})
 
     # --- Relationship CRUD ---
@@ -173,38 +197,21 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
             confidence=data.get("confidence", 1.0),
         )
         rel_id = graph.add_relationship(rel)
+        cache.clear()
         return jsonify({"relationship_id": rel_id})
 
     # --- Ingest (extraction from conversation turns) ---
 
     @app.post("/context/ingest")
     def ingest():
-        from context_engine.extraction import extract_entities
+        from context_engine.worker import enqueue
         data = request.get_json()
         user_msg = data.get("user_message", "")
         assistant_msg = data.get("assistant_message", "")
         session_id = data.get("session_id", "")
-        source_agent = data.get("source_agent", "unknown")
-
-        extracted = extract_entities(user_msg, assistant_msg,
-                                     source_session=session_id,
-                                     source_agent=source_agent)
-        entity_ids = []
-        for e_data in extracted:
-            entity = Entity(
-                type=e_data["type"],
-                content=e_data["content"],
-                confidence=e_data.get("confidence", 0.5),
-                source_agent=source_agent,
-                source_session=session_id,
-            )
-            eid = graph.add_entity(entity)
-            entity_ids.append(eid)
-
-        return jsonify({
-            "entities_extracted": len(entity_ids),
-            "entity_ids": entity_ids,
-        })
+        if user_msg and assistant_msg:
+            enqueue(user_msg, assistant_msg, session_id)
+        return jsonify({"queued": True}), 202
 
     return app
 

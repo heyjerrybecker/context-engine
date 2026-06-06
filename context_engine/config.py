@@ -20,6 +20,9 @@ class ContextEngineConfig:
     decay_half_life_days: float = 14
     archive_threshold: float = 0.1
     grace_days: float = 7
+    redis_url: str = ""
+    cache_default_timeout: int = 60
+    extraction_model: str = "claude-haiku-4-5@20251001"
 
     @property
     def db_path(self) -> str:
@@ -56,5 +59,12 @@ def load_config(config_dir: str = DEFAULT_CONFIG_DIR) -> ContextEngineConfig:
         cfg.decay_half_life_days = confidence.get("decay_half_life_days", 14)
         cfg.archive_threshold = confidence.get("archive_threshold", 0.1)
         cfg.grace_days = confidence.get("grace_days", 7)
+
+        cache = data.get("cache", {})
+        cfg.redis_url = cache.get("redis_url", "")
+        cfg.cache_default_timeout = cache.get("default_timeout", 60)
+
+        extraction = data.get("extraction", {})
+        cfg.extraction_model = extraction.get("model", "claude-haiku-4-5@20251001")
 
     return cfg

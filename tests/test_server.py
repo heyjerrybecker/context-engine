@@ -142,24 +142,20 @@ class TestBriefingAPI:
 
 
 class TestIngestAPI:
-    def test_ingest_extracts_decision(self, client):
-        client.post("/context/session/start", json={"agent": "test", "session_id": "s1"})
+    def test_ingest_returns_202(self, client):
         resp = client.post("/context/ingest", json={
-            "user_message": "Let's go with SQLite for storage.",
+            "user_message": "Let's go with Redis.",
             "assistant_message": "Good choice.",
             "session_id": "s1",
             "source_agent": "claude-code",
         })
-        assert resp.status_code == 200
-        data = resp.get_json()
-        assert data["entities_extracted"] >= 1
+        assert resp.status_code == 202
+        assert resp.get_json()["queued"] is True
 
-    def test_ingest_boring_turn_extracts_nothing(self, client):
+    def test_ingest_empty_messages_still_returns_202(self, client):
         resp = client.post("/context/ingest", json={
-            "user_message": "Hi",
-            "assistant_message": "Hello!",
+            "user_message": "",
+            "assistant_message": "",
             "session_id": "s1",
-            "source_agent": "test",
         })
-        assert resp.status_code == 200
-        assert resp.get_json()["entities_extracted"] == 0
+        assert resp.status_code == 202
