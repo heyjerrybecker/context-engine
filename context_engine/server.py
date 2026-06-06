@@ -3,7 +3,7 @@
 from flask import Flask, request, jsonify
 from flask_caching import Cache
 
-from context_engine.config import load_config, ContextEngineConfig
+from context_engine.config import load_config
 from context_engine.schema import init_db
 from context_engine.graph import KnowledgeGraph
 from context_engine.briefing import generate_briefing
