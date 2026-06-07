@@ -28,6 +28,10 @@ class ContextEngineConfig:
     def db_path(self) -> str:
         return os.path.join(self.config_dir, "graph.db")
 
+    @property
+    def metrics_db_path(self) -> str:
+        return os.path.join(self.config_dir, "session_metrics.db")
+
     def load_soul(self) -> str:
         if self.soul_path and os.path.exists(self.soul_path):
             return Path(self.soul_path).read_text()
