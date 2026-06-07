@@ -1,6 +1,13 @@
 import os
+import sys
 import tempfile
+from pathlib import Path
 import pytest
+
+# Add scripts/lib to sys.path for metrics tests
+_scripts = str(Path(__file__).parent.parent / "scripts")
+if _scripts not in sys.path:
+    sys.path.insert(0, _scripts)
 
 
 @pytest.fixture
