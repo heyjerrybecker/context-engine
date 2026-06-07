@@ -51,6 +51,15 @@ class TestSessionAPI:
         data = resp.get_json()
         assert data["briefing_written"] is True
 
+    def test_session_end_returns_200(self, client):
+        client.post("/context/session/start", json={"agent": "test", "session_id": "s-end-test"})
+        resp = client.post("/context/session/end", json={
+            "session_id": "s-end-test", "summary": "Did some work"
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["briefing_written"] is True
+
 
 class TestEntityAPI:
     def test_create_entity(self, client):

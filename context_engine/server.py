@@ -15,6 +15,7 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
 
     cfg = load_config(config_dir) if config_dir else load_config()
     db = db_path or cfg.db_path
+    metrics_db = cfg.metrics_db_path
     init_db(db)
     graph = KnowledgeGraph(db)
 
@@ -79,16 +80,21 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
 
     @app.post("/context/session/end")
     def session_end():
+        import threading
+        from context_engine.metrics.classifier import classify_session_async
         data = request.get_json()
         session_id = data.get("session_id", "")
         summary = data.get("summary")
         graph.end_session(session_id, summary=summary)
         cache.clear()
-        text = generate_briefing(graph)
-        return jsonify({
-            "briefing_written": True,
-            "summary": summary,
-        })
+        generate_briefing(graph)
+        if session_id and session_id != "unknown":
+            threading.Thread(
+                target=classify_session_async,
+                args=(session_id, db, metrics_db),
+                daemon=True,
+            ).start()
+        return jsonify({"briefing_written": True, "summary": summary})
 
     # --- Entity CRUD ---
 
