@@ -13,6 +13,9 @@ from context_engine.models import Entity, Thread, Relationship
 def create_app(db_path: str = None, config_dir: str = None) -> Flask:
     app = Flask(__name__)
 
+    from context_engine.tracing import init_tracing
+    init_tracing()
+
     cfg = load_config(config_dir) if config_dir else load_config()
     db = db_path or cfg.db_path
     metrics_db = cfg.metrics_db_path

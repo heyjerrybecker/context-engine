@@ -36,11 +36,13 @@ def enqueue(user_msg: str, assistant_msg: str, session_id: str) -> None:
 
 
 def _run(db_path: str, source_agent: str) -> None:
+    import sys
     from context_engine.graph import KnowledgeGraph
     from context_engine.lenses import extract_from_turn
     from context_engine.models import Entity
 
     graph = KnowledgeGraph(db_path)
+    print(f"[CE worker] started, db={db_path}", file=sys.stderr, flush=True)
 
     while True:
         try:
@@ -48,7 +50,9 @@ def _run(db_path: str, source_agent: str) -> None:
         except queue.Empty:
             continue
         try:
+            print(f"[CE worker] extracting (session={item['session_id']})...", file=sys.stderr, flush=True)
             entities = extract_from_turn(item["user_msg"], item["assistant_msg"])
+            print(f"[CE worker] got {len(entities)} entities", file=sys.stderr, flush=True)
             for e_data in entities:
                 if e_data.get("type") == "thread_signal":
                     continue
@@ -60,8 +64,8 @@ def _run(db_path: str, source_agent: str) -> None:
                     source_session=item["session_id"],
                 )
                 graph.add_entity(entity)
-                logger.debug("Extracted %s: %s", entity.type, entity.content[:60])
+                print(f"[CE worker] saved: {entity.type} — {entity.content[:80]}", file=sys.stderr, flush=True)
         except Exception as exc:
-            logger.warning("Worker extraction error (item dropped): %s", exc)
+            print(f"[CE worker] ERROR: {exc}", file=sys.stderr, flush=True)
         finally:
             _queue.task_done()

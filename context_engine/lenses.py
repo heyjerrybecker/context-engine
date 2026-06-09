@@ -58,7 +58,7 @@ def _make_client():
     from anthropic import AnthropicVertex
     return AnthropicVertex(
         project_id=os.environ.get("ANTHROPIC_VERTEX_PROJECT_ID", "itpc-gcp-pnd-pe-eng-claude"),
-        region="us-east5",
+        region=os.environ.get("VERTEX_REGION", "global"),
     )
 
 

@@ -10,6 +10,10 @@ confidence:
   decay_half_life_days: 14
   archive_threshold: 0.1
 
+cache:
+  redis_url: redis://localhost:6379/0
+  default_timeout: 60  # seconds; omit redis_url to use in-memory SimpleCache
+
 connectors:
   claude-code:
     type: hook
