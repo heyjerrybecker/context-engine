@@ -209,6 +209,39 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
         cache.clear()
         return jsonify({"relationship_id": rel_id})
 
+    # --- Federation: recent entities for team Gaia ingestion ---
+
+    @app.get("/context/entities/recent")
+    def recent_entities():
+        since = request.args.get("since", "")
+        limit = min(int(request.args.get("limit", 50)), 200)
+        entity_type = request.args.get("type")
+
+        import sqlite3
+        conn = sqlite3.connect(graph.db_path)
+        conditions = ["1=1"]
+        params = []
+        if since:
+            conditions.append("created_at > ?")
+            params.append(since)
+        if entity_type:
+            conditions.append("type = ?")
+            params.append(entity_type)
+        where = " AND ".join(conditions)
+        rows = conn.execute(
+            f"SELECT entity_id, type, content, confidence, created_at, source_agent, source_session "
+            f"FROM entities WHERE {where} ORDER BY created_at DESC LIMIT ?",
+            params + [limit],
+        ).fetchall()
+        conn.close()
+
+        entities = [
+            {"entity_id": r[0], "type": r[1], "content": r[2], "confidence": r[3],
+             "created_at": r[4], "source_agent": r[5], "source_session": r[6]}
+            for r in rows
+        ]
+        return jsonify({"entities": entities, "count": len(entities)})
+
     # --- Ingest (extraction from conversation turns) ---
 
     @app.post("/context/ingest")
