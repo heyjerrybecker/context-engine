@@ -62,6 +62,31 @@ def init_db(db_path: str) -> None:
         CREATE INDEX IF NOT EXISTS idx_rel_to ON relationships(to_id);
         CREATE INDEX IF NOT EXISTS idx_rel_type ON relationships(type);
         CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent);
+
+        CREATE TABLE IF NOT EXISTS agent_memory (
+            agent_id TEXT PRIMARY KEY,
+            memory_path TEXT NOT NULL,
+            memory_dir TEXT,
+            max_chars INTEGER NOT NULL DEFAULT 4000,
+            current_chars INTEGER NOT NULL DEFAULT 0,
+            entry_count INTEGER NOT NULL DEFAULT 0,
+            content_hash TEXT,
+            last_synced TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS memory_archive (
+            archive_id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            entry_name TEXT NOT NULL,
+            content TEXT NOT NULL,
+            category TEXT,
+            original_path TEXT,
+            entry_created_at TEXT,
+            archived_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_archive_agent ON memory_archive(agent_id);
     """)
 
     # FTS5 virtual table for full-text search on entity content
@@ -88,6 +113,32 @@ def init_db(db_path: str) -> None:
         CREATE TRIGGER IF NOT EXISTS entities_fts_delete
         AFTER DELETE ON entities BEGIN
             DELETE FROM entities_fts WHERE entity_id = old.entity_id;
+        END;
+    """)
+
+    # FTS5 for memory archive search
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS memory_archive_fts
+        USING fts5(archive_id, entry_name, content, tokenize='porter')
+    """)
+
+    conn.executescript("""
+        CREATE TRIGGER IF NOT EXISTS archive_fts_insert
+        AFTER INSERT ON memory_archive BEGIN
+            INSERT INTO memory_archive_fts(archive_id, entry_name, content)
+            VALUES (new.archive_id, new.entry_name, new.content);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS archive_fts_update
+        AFTER UPDATE OF content ON memory_archive BEGIN
+            DELETE FROM memory_archive_fts WHERE archive_id = old.archive_id;
+            INSERT INTO memory_archive_fts(archive_id, entry_name, content)
+            VALUES (new.archive_id, new.entry_name, new.content);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS archive_fts_delete
+        AFTER DELETE ON memory_archive BEGIN
+            DELETE FROM memory_archive_fts WHERE archive_id = old.archive_id;
         END;
     """)
 

@@ -23,6 +23,9 @@ class ContextEngineConfig:
     redis_url: str = ""
     cache_default_timeout: int = 60
     extraction_model: str = "claude-haiku-4-5@20251001"
+    agents: dict = field(default_factory=dict)
+    memory_capacity_threshold: float = 0.8
+    memory_aging_days: int = 30
 
     @property
     def db_path(self) -> str:
@@ -70,5 +73,17 @@ def load_config(config_dir: str = DEFAULT_CONFIG_DIR) -> ContextEngineConfig:
 
         extraction = data.get("extraction", {})
         cfg.extraction_model = extraction.get("model", "claude-haiku-4-5@20251001")
+
+        agents = data.get("agents", {})
+        for agent_id, agent_cfg in agents.items():
+            cfg.agents[agent_id] = {
+                "memory_path": os.path.expanduser(agent_cfg.get("memory_path", "")),
+                "memory_dir": os.path.expanduser(agent_cfg["memory_dir"]) if agent_cfg.get("memory_dir") else None,
+                "max_chars": agent_cfg.get("max_chars", 4000),
+            }
+
+        memory = data.get("memory", {})
+        cfg.memory_capacity_threshold = memory.get("capacity_threshold", 0.8)
+        cfg.memory_aging_days = memory.get("aging_days", 30)
 
     return cfg

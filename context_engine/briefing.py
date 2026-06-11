@@ -5,7 +5,7 @@ from context_engine.models import Entity, Thread, ThreadStatus
 from context_engine.graph import KnowledgeGraph
 
 
-def generate_briefing(graph: KnowledgeGraph) -> str:
+def generate_briefing(graph: KnowledgeGraph, lifecycle=None) -> str:
     sections = []
 
     # Right Now — active threads with their entities
@@ -46,5 +46,22 @@ def generate_briefing(graph: KnowledgeGraph) -> str:
             sections.append(f"- {t.title}")
     else:
         sections.append("No open threads.")
+
+    if lifecycle:
+        has_warnings = False
+        for agent_id in lifecycle.get_registered_agents():
+            health = lifecycle.get_health(agent_id)
+            if not health:
+                continue
+            util_pct = int(health["utilization"] * 100)
+            if util_pct > 80:
+                if not has_warnings:
+                    sections.append("")
+                    sections.append("## Memory Health")
+                    has_warnings = True
+                if util_pct > 95:
+                    sections.append(f"- **{agent_id}**: {util_pct}% capacity (CRITICAL)")
+                else:
+                    sections.append(f"- **{agent_id}**: {util_pct}% capacity — consider archiving older entries")
 
     return "\n".join(sections)

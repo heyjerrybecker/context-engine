@@ -8,6 +8,7 @@ from context_engine.schema import init_db
 from context_engine.graph import KnowledgeGraph
 from context_engine.briefing import generate_briefing
 from context_engine.models import Entity, Thread, Relationship
+from context_engine.memory_lifecycle import MemoryLifecycle
 
 
 def create_app(db_path: str = None, config_dir: str = None) -> Flask:
@@ -24,6 +25,12 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
 
     from context_engine.worker import start_worker as _start_worker
     _start_worker(db)
+
+    lifecycle = MemoryLifecycle(db, {
+        "agents": cfg.agents,
+        "capacity_threshold": cfg.memory_capacity_threshold,
+        "aging_days": cfg.memory_aging_days,
+    })
 
     if cfg.redis_url:
         app.config["CACHE_TYPE"] = "RedisCache"
@@ -69,8 +76,10 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
         session_id = data.get("session_id", "")
         agent = data.get("agent", "unknown")
         graph.start_session(session_id, agent)
+        if agent in cfg.agents:
+            lifecycle.sync_agent(agent)
         cache.clear()
-        text = generate_briefing(graph)
+        text = generate_briefing(graph, lifecycle=lifecycle)
         active = graph.list_threads()
         return jsonify({
             "briefing": text,
@@ -254,6 +263,42 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
         if user_msg and assistant_msg:
             enqueue(user_msg, assistant_msg, session_id)
         return jsonify({"queued": True}), 202
+
+    # --- Memory lifecycle ---
+
+    @app.post("/context/memory/sync")
+    def memory_sync():
+        data = request.get_json()
+        agent_id = data.get("agent_id", "")
+        result = lifecycle.sync_agent(agent_id)
+        if "error" in result:
+            return jsonify(result), 404
+        cache.clear()
+        return jsonify(result)
+
+    @app.post("/context/memory/archive")
+    def memory_archive():
+        data = request.get_json()
+        agent_id = data.get("agent_id", "")
+        entries = data.get("entries", [])
+        result = lifecycle.archive_entries(agent_id, entries)
+        return jsonify(result)
+
+    @app.get("/context/memory/recall")
+    def memory_recall():
+        agent_id = request.args.get("agent_id", "")
+        q = request.args.get("q", "")
+        limit = min(int(request.args.get("limit", 10)), 50)
+        results = lifecycle.recall(agent_id, q, limit)
+        return jsonify({"results": results, "count": len(results)})
+
+    @app.get("/context/memory/health")
+    def memory_health():
+        agent_id = request.args.get("agent_id", "")
+        health = lifecycle.get_health(agent_id)
+        if not health:
+            return jsonify({"error": f"No data for agent: {agent_id}"}), 404
+        return jsonify(health)
 
     return app
 
