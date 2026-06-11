@@ -16,6 +16,43 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_usage_log = None
+
+
+def _get_usage_log():
+    global _usage_log
+    if _usage_log is None:
+        from context_engine.observatory import UsageLog
+        from context_engine.config import DEFAULT_CONFIG_DIR
+        _usage_log = UsageLog(os.path.join(DEFAULT_CONFIG_DIR, "usage.db"))
+    return _usage_log
+
+
+def _log_usage(resp, model: str):
+    try:
+        from context_engine.observatory import estimate_cost
+        log = _get_usage_log()
+        usage = resp.usage
+        cost = estimate_cost(
+            model,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
+            cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+        )
+        log.record(
+            agent_id="ce-extraction",
+            model=model,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
+            cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+            latency_ms=0,
+            estimated_cost=cost,
+        )
+    except Exception:
+        pass
+
 _TURN_PROMPT = """\
 Analyze this conversation turn and extract knowledge graph entities.
 
@@ -100,11 +137,13 @@ def extract_from_turn(user_msg: str, assistant_msg: str) -> list:
         assistant_msg=assistant_msg[:800],
     )
     try:
+        model = "claude-haiku-4-5@20251001"
         resp = client.messages.create(
-            model="claude-haiku-4-5@20251001",
+            model=model,
             max_tokens=256,
             messages=[{"role": "user", "content": prompt}],
         )
+        _log_usage(resp, model)
         data = _parse_json(resp.content[0].text)
         return _entities_from_result(data, user_msg)
     except Exception as exc:
@@ -126,11 +165,13 @@ def extract_from_batch(pairs: list) -> list:
         )
         prompt = _BATCH_PROMPT.format(turns=turns_text)
         try:
+            model = "claude-haiku-4-5@20251001"
             resp = client.messages.create(
-                model="claude-haiku-4-5@20251001",
+                model=model,
                 max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}],
             )
+            _log_usage(resp, model)
             items = _parse_json(resp.content[0].text)
             for i, item in enumerate(items):
                 user_msg = chunk[i][0] if i < len(chunk) else ""
