@@ -26,6 +26,7 @@ class ContextEngineConfig:
     agents: dict = field(default_factory=dict)
     memory_capacity_threshold: float = 0.8
     memory_aging_days: int = 30
+    observatory_backend_url: str = "https://us-east5-aiplatform.googleapis.com"
 
     @property
     def db_path(self) -> str:
@@ -85,5 +86,9 @@ def load_config(config_dir: str = DEFAULT_CONFIG_DIR) -> ContextEngineConfig:
         memory = data.get("memory", {})
         cfg.memory_capacity_threshold = memory.get("capacity_threshold", 0.8)
         cfg.memory_aging_days = memory.get("aging_days", 30)
+
+        observatory = data.get("observatory", {})
+        cfg.observatory_backend_url = observatory.get(
+            "backend_url", "https://us-east5-aiplatform.googleapis.com")
 
     return cfg

@@ -1,5 +1,7 @@
 """Flask HTTP API for the Context Engine."""
 
+import os
+
 from flask import Flask, request, jsonify
 from flask_caching import Cache
 
@@ -263,6 +265,40 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
         if user_msg and assistant_msg:
             enqueue(user_msg, assistant_msg, session_id)
         return jsonify({"queued": True}), 202
+
+    # --- Token Observatory ---
+
+    from context_engine.observatory import proxy_request, UsageLog
+    usage_db = os.path.join(cfg.config_dir, "usage.db")
+    usage_log = UsageLog(usage_db)
+
+    @app.post("/v1/messages")
+    def observatory_proxy():
+        agent_id = request.headers.get("x-agent-id", "unknown")
+        body, status, headers = proxy_request(
+            request_data=request.get_data(),
+            headers=dict(request.headers),
+            backend_url=cfg.observatory_backend_url,
+            usage_log=usage_log,
+            agent_id=agent_id,
+        )
+        return app.response_class(body, status=status,
+                                  content_type=headers.get("content-type", "application/json"))
+
+    @app.get("/v1/usage")
+    def observatory_usage():
+        agent_id = request.args.get("agent_id")
+        since = request.args.get("since")
+        limit = int(request.args.get("limit", 100))
+        rows = usage_log.query(agent_id=agent_id, since=since, limit=limit)
+        return jsonify({"usage": rows, "count": len(rows)})
+
+    @app.get("/v1/usage/summary")
+    def observatory_summary():
+        agent_id = request.args.get("agent_id")
+        since = request.args.get("since")
+        summary = usage_log.summary(agent_id=agent_id, since=since)
+        return jsonify(summary)
 
     # --- Memory lifecycle ---
 
