@@ -285,6 +285,23 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
         return app.response_class(body, status=status,
                                   content_type=headers.get("content-type", "application/json"))
 
+    @app.post("/v1/projects/<project>/locations/<region>/publishers/anthropic/models/<model_spec>")
+    def observatory_vertex_proxy(project, region, model_spec):
+        agent_id = request.headers.get("x-agent-id", "unknown")
+        real_url = (f"https://{region}-aiplatform.googleapis.com"
+                    f"/v1/projects/{project}/locations/{region}"
+                    f"/publishers/anthropic/models/{model_spec}")
+        body, status, headers = proxy_request(
+            request_data=request.get_data(),
+            headers=dict(request.headers),
+            backend_url=cfg.observatory_backend_url,
+            usage_log=usage_log,
+            agent_id=agent_id,
+            target_url=real_url,
+        )
+        return app.response_class(body, status=status,
+                                  content_type=headers.get("content-type", "application/json"))
+
     @app.get("/v1/usage")
     def observatory_usage():
         agent_id = request.args.get("agent_id")

@@ -138,7 +138,8 @@ class UsageLog:
 
 def proxy_request(request_data: bytes, headers: dict,
                   backend_url: str, usage_log: UsageLog,
-                  agent_id: str = "unknown") -> tuple:
+                  agent_id: str = "unknown",
+                  target_url: str = None) -> tuple:
     import httpx
 
     body = json.loads(request_data)
@@ -151,13 +152,11 @@ def proxy_request(request_data: bytes, headers: dict,
         if val:
             forward_headers[key] = val
 
+    url = target_url or f"{backend_url}/v1/messages"
+
     start = time.time()
     with httpx.Client(timeout=600) as client:
-        resp = client.post(
-            f"{backend_url}/v1/messages",
-            content=request_data,
-            headers=forward_headers,
-        )
+        resp = client.post(url, content=request_data, headers=forward_headers)
     latency_ms = int((time.time() - start) * 1000)
 
     input_tokens = output_tokens = cache_read = cache_creation = 0

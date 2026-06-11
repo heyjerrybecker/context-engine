@@ -130,6 +130,44 @@ class TestProxyRoute:
         assert data["model"] == "claude-sonnet-4-20250514"
 
 
+class TestVertexProxy:
+    @patch("httpx.Client")
+    def test_vertex_proxy_forwards_and_logs(self, mock_client_cls, observatory_client):
+        mock_client_cls.return_value.__enter__ = lambda s: s
+        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client_cls.return_value.post.return_value = _mock_response(
+            model="claude-haiku-4-5@20251001", input_tokens=50, output_tokens=20)
+
+        resp = observatory_client.post(
+            "/v1/projects/my-project/locations/us-east5/publishers/anthropic/models/claude-haiku-4-5@20251001:rawPredict",
+            json={"model": "claude-haiku-4-5@20251001", "messages": [{"role": "user", "content": "hi"}]},
+            headers={"x-agent-id": "vertex-test", "Authorization": "Bearer fake-token"},
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["model"] == "claude-haiku-4-5@20251001"
+
+        # Verify it was logged
+        usage_resp = observatory_client.get("/v1/usage?agent_id=vertex-test")
+        assert usage_resp.get_json()["count"] == 1
+
+    @patch("httpx.Client")
+    def test_vertex_proxy_constructs_correct_url(self, mock_client_cls, observatory_client):
+        mock_client_cls.return_value.__enter__ = lambda s: s
+        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client_cls.return_value.post.return_value = _mock_response()
+
+        observatory_client.post(
+            "/v1/projects/my-proj/locations/us-east5/publishers/anthropic/models/claude-sonnet-4:rawPredict",
+            json={"model": "claude-sonnet-4", "messages": []},
+            headers={"x-agent-id": "url-test"},
+        )
+
+        call_args = mock_client_cls.return_value.post.call_args
+        assert "us-east5-aiplatform.googleapis.com" in call_args[0][0]
+        assert "my-proj" in call_args[0][0]
+
+
 class TestUsageAPI:
     @patch("httpx.Client")
     def test_usage_returns_logged_calls(self, mock_client_cls, observatory_client):
