@@ -187,3 +187,70 @@ def proxy_request(request_data: bytes, headers: dict,
                 cost, latency_ms)
 
     return resp.content, resp.status_code, dict(resp.headers)
+
+
+def proxy_streaming_request(request_data: bytes, headers: dict,
+                            backend_url: str, usage_log: UsageLog,
+                            agent_id: str = "unknown",
+                            target_url: str = None):
+    """Proxy a streaming request, yielding SSE chunks and logging usage at the end."""
+    import httpx
+
+    body = json.loads(request_data)
+    model = body.get("model", "unknown")
+
+    forward_headers = {}
+    for key in ("authorization", "x-api-key", "content-type",
+                "anthropic-version", "anthropic-beta"):
+        val = headers.get(key)
+        if val:
+            forward_headers[key] = val
+
+    url = target_url or f"{backend_url}/v1/messages"
+    start = time.time()
+
+    input_tokens = output_tokens = cache_read = cache_creation = 0
+
+    def generate():
+        nonlocal input_tokens, output_tokens, cache_read, cache_creation
+
+        with httpx.Client(timeout=600) as client:
+            with client.stream("POST", url, content=request_data,
+                               headers=forward_headers) as resp:
+                for line in resp.iter_lines():
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+                        try:
+                            event = json.loads(data_str)
+                            event_type = event.get("type", "")
+
+                            if event_type == "message_start":
+                                usage = event.get("message", {}).get("usage", {})
+                                input_tokens = usage.get("input_tokens", 0)
+                                cache_read = usage.get("cache_read_input_tokens", 0)
+                                cache_creation = usage.get("cache_creation_input_tokens", 0)
+
+                            elif event_type == "message_delta":
+                                usage = event.get("usage", {})
+                                output_tokens = usage.get("output_tokens", 0)
+
+                        except (json.JSONDecodeError, KeyError):
+                            pass
+
+                    yield line + "\n"
+
+        latency_ms = int((time.time() - start) * 1000)
+        cost = estimate_cost(model, input_tokens, output_tokens,
+                             cache_read, cache_creation)
+        usage_log.record(
+            agent_id=agent_id, model=model,
+            input_tokens=input_tokens, output_tokens=output_tokens,
+            cache_read_tokens=cache_read, cache_creation_tokens=cache_creation,
+            latency_ms=latency_ms, estimated_cost=cost,
+        )
+        logger.info("Observatory (stream): %s %s in=%d out=%d $%.6f %dms",
+                     agent_id, model, input_tokens, output_tokens,
+                     cost, latency_ms)
+
+    return generate(), 200, {"content-type": "text/event-stream",
+                              "cache-control": "no-cache"}

@@ -1,5 +1,6 @@
 """Flask HTTP API for the Context Engine."""
 
+import json
 import os
 
 from flask import Flask, request, jsonify
@@ -268,39 +269,48 @@ def create_app(db_path: str = None, config_dir: str = None) -> Flask:
 
     # --- Token Observatory ---
 
-    from context_engine.observatory import proxy_request, UsageLog
+    from context_engine.observatory import proxy_request, proxy_streaming_request, UsageLog
     usage_db = os.path.join(cfg.config_dir, "usage.db")
     usage_log = UsageLog(usage_db)
 
-    @app.post("/v1/messages")
-    def observatory_proxy():
-        agent_id = request.headers.get("x-agent-id", "unknown")
+    def _proxy(agent_id, target_url=None):
+        request_data = request.get_data()
+        is_streaming = json.loads(request_data).get("stream", False)
+
+        if is_streaming:
+            generator, status, headers = proxy_streaming_request(
+                request_data=request_data,
+                headers=dict(request.headers),
+                backend_url=cfg.observatory_backend_url,
+                usage_log=usage_log,
+                agent_id=agent_id,
+                target_url=target_url,
+            )
+            return app.response_class(generator, status=status,
+                                      content_type=headers["content-type"],
+                                      direct_passthrough=True)
+
         body, status, headers = proxy_request(
-            request_data=request.get_data(),
+            request_data=request_data,
             headers=dict(request.headers),
             backend_url=cfg.observatory_backend_url,
             usage_log=usage_log,
             agent_id=agent_id,
+            target_url=target_url,
         )
         return app.response_class(body, status=status,
                                   content_type=headers.get("content-type", "application/json"))
 
+    @app.post("/v1/messages")
+    def observatory_proxy():
+        return _proxy(request.headers.get("x-agent-id", "unknown"))
+
     @app.post("/v1/projects/<project>/locations/<region>/publishers/anthropic/models/<model_spec>")
     def observatory_vertex_proxy(project, region, model_spec):
-        agent_id = request.headers.get("x-agent-id", "unknown")
         real_url = (f"https://{region}-aiplatform.googleapis.com"
                     f"/v1/projects/{project}/locations/{region}"
                     f"/publishers/anthropic/models/{model_spec}")
-        body, status, headers = proxy_request(
-            request_data=request.get_data(),
-            headers=dict(request.headers),
-            backend_url=cfg.observatory_backend_url,
-            usage_log=usage_log,
-            agent_id=agent_id,
-            target_url=real_url,
-        )
-        return app.response_class(body, status=status,
-                                  content_type=headers.get("content-type", "application/json"))
+        return _proxy(request.headers.get("x-agent-id", "unknown"), target_url=real_url)
 
     @app.get("/v1/usage")
     def observatory_usage():

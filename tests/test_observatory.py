@@ -168,6 +168,53 @@ class TestVertexProxy:
         assert "my-proj" in call_args[0][0]
 
 
+class TestStreamingProxy:
+    @patch("httpx.Client")
+    def test_streaming_proxy_passes_through_and_logs(self, mock_client_cls, observatory_client):
+        sse_lines = [
+            'event: message_start',
+            'data: {"type":"message_start","message":{"usage":{"input_tokens":50}}}',
+            '',
+            'event: content_block_delta',
+            'data: {"type":"content_block_delta","delta":{"text":"hello"}}',
+            '',
+            'event: message_delta',
+            'data: {"type":"message_delta","usage":{"output_tokens":25}}',
+            '',
+            'event: message_stop',
+            'data: {"type":"message_stop"}',
+            '',
+        ]
+
+        mock_stream = MagicMock()
+        mock_stream.__enter__ = lambda s: s
+        mock_stream.__exit__ = MagicMock(return_value=False)
+        mock_stream.iter_lines.return_value = iter(sse_lines)
+
+        mock_client_cls.return_value.__enter__ = lambda s: s
+        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client_cls.return_value.stream.return_value = mock_stream
+
+        resp = observatory_client.post(
+            "/v1/messages",
+            json={"model": "claude-sonnet-4-20250514", "stream": True,
+                  "messages": [{"role": "user", "content": "hi"}]},
+            headers={"x-agent-id": "stream-test"},
+        )
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.content_type
+
+        # Consume the stream to trigger usage logging
+        _ = resp.data
+
+        # Verify usage was logged
+        usage_resp = observatory_client.get("/v1/usage?agent_id=stream-test")
+        usage_data = usage_resp.get_json()
+        assert usage_data["count"] == 1
+        assert usage_data["usage"][0]["input_tokens"] == 50
+        assert usage_data["usage"][0]["output_tokens"] == 25
+
+
 class TestUsageAPI:
     @patch("httpx.Client")
     def test_usage_returns_logged_calls(self, mock_client_cls, observatory_client):
