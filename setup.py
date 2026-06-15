@@ -334,13 +334,37 @@ def print_success():
 Your AI now has persistent memory across all sessions.
 Start a new Claude Code conversation to see the magic.
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{Colors.BOLD}What we just built for you:{Colors.END}
+
+🧠 {Colors.BOLD}Personal Knowledge Graph{Colors.END}
+   A local database that captures decisions, insights, and
+   context from every AI conversation you have
+
+📚 {Colors.BOLD}Working Memory System{Colors.END}
+   Your AI remembers what you worked on yesterday, last week,
+   and can connect patterns across all your sessions
+
+🎭 {Colors.BOLD}AI Identity & Relationship{Colors.END}
+   Your assistant knows who you are, how you prefer to
+   communicate, and will adapt to work better with you over time
+
+🔗 {Colors.BOLD}Seamless Integration{Colors.END}
+   Everything happens invisibly — no new apps to learn,
+   just AI that actually remembers
+
+🏠 {Colors.BOLD}Privacy First{Colors.END}
+   All your data stays on your machine. You control what
+   gets shared (if anything). Your memory belongs to you.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 {Colors.BLUE}What happens next:{Colors.END}
 • Your AI will remember this conversation
-• Future sessions will reference past work naturally  
-• No more re-explaining context or starting from scratch
-• Use /context anytime to see what's been captured
+• Future sessions will reference past work naturally
+• The magic grows with each session
 
-{Colors.YELLOW}The magic grows with each session. Enjoy!{Colors.END}
+{Colors.YELLOW}Ready to experience AI that never forgets? Start a new session!{Colors.END}
 """)
 
 def main():
