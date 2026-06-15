@@ -198,18 +198,44 @@ def install_hooks():
 
     (hook_dst / "connector.py").chmod(0o755)
 
+    # Wire hooks into settings.json (Claude Code reads hooks from here, not from plugins dir)
+    settings_path = Path.home() / ".claude" / "settings.json"
+    connector_path = str(hook_dst / "connector.py")
+
+    settings = {}
+    if settings_path.exists():
+        settings = json.loads(settings_path.read_text())
+
+    hooks = settings.setdefault("hooks", {})
+    hook_entries = {
+        "SessionStart": f"python3 {connector_path} session-start",
+        "UserPromptSubmit": f"python3 {connector_path} user-prompt",
+        "Stop": f"python3 {connector_path} stop",
+    }
+    timeouts = {"SessionStart": 5, "UserPromptSubmit": 3, "Stop": 5}
+
+    for event, command in hook_entries.items():
+        existing = hooks.get(event, [])
+        already_wired = any(
+            "connector.py" in h.get("command", "")
+            for entry in existing
+            for h in (entry.get("hooks", []) if isinstance(entry, dict) else [])
+        )
+        if not already_wired:
+            existing.append({
+                "hooks": [{
+                    "type": "command",
+                    "command": command,
+                    "timeout": timeouts[event],
+                }]
+            })
+            hooks[event] = existing
+
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+
 def start_server():
     """Start the Context Engine server and install LaunchAgent for auto-start"""
     ce_repo = Path(__file__).parent.resolve()
-
-    # Start the server now
-    subprocess.Popen(
-        [sys.executable, "-m", "context_engine.server"],
-        cwd=str(ce_repo),
-        stdout=open("/tmp/ce_server.log", "a"),
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-    )
 
     # Create LaunchAgent for auto-start on login (macOS)
     if sys.platform == "darwin":
@@ -242,6 +268,32 @@ def start_server():
 </dict>
 </plist>"""
         plist_path.write_text(plist_content)
+
+        # Load the LaunchAgent into the current session (starts the server now)
+        subprocess.run(["launchctl", "unload", str(plist_path)],
+                       capture_output=True)
+        subprocess.run(["launchctl", "load", str(plist_path)],
+                       capture_output=True, check=True)
+    else:
+        # Non-macOS: start directly
+        subprocess.Popen(
+            [sys.executable, "-m", "context_engine.server"],
+            cwd=str(ce_repo),
+            stdout=open("/tmp/ce_server.log", "a"),
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+
+    # Verify server is up
+    import urllib.request
+    for _ in range(10):
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:8850/context/health", timeout=2) as resp:
+                if resp.status == 200:
+                    return
+        except Exception:
+            time.sleep(1)
+    raise Exception("Server failed to start — check /tmp/ce_server.log")
 
 def generate_identity_files(user_info):
     """Create SOUL.md, USER.md, and config.yaml"""
