@@ -137,7 +137,7 @@ def extract_from_turn(user_msg: str, assistant_msg: str) -> list:
         assistant_msg=assistant_msg[:800],
     )
     try:
-        model = "claude-haiku-4-5@20251001"
+        model = "claude-haiku-4-5-20251001"
         resp = client.messages.create(
             model=model,
             max_tokens=256,
@@ -165,7 +165,7 @@ def extract_from_batch(pairs: list) -> list:
         )
         prompt = _BATCH_PROMPT.format(turns=turns_text)
         try:
-            model = "claude-haiku-4-5@20251001"
+            model = "claude-haiku-4-5-20251001"
             resp = client.messages.create(
                 model=model,
                 max_tokens=1024,
