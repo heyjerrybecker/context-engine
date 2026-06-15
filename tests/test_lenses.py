@@ -42,6 +42,27 @@ def test_entities_from_result_empty_content_skipped():
     assert _entities_from_result(data, "") == []
 
 
+def test_entities_from_result_insight():
+    data = {"decision": None, "thread": None,
+            "insight": {"content": "The rate limiter fires before auth", "confidence": 0.5}}
+    entities = _entities_from_result(data, "")
+    assert len(entities) == 1
+    assert entities[0]["type"] == "insight"
+    assert entities[0]["confidence"] == 0.5
+
+
+def test_entities_from_result_all_three():
+    data = {
+        "decision": {"content": "Use Redis", "confidence": 0.6},
+        "thread": {"title": "Caching", "signal": "new_topic"},
+        "insight": {"content": "Cache hit ratio is 40%", "confidence": 0.4},
+    }
+    entities = _entities_from_result(data, "")
+    assert len(entities) == 3
+    types = {e["type"] for e in entities}
+    assert types == {"decision", "thread_signal", "insight"}
+
+
 def test_extract_from_turn_returns_decision():
     client = _mock_client('{"decision": {"content": "Go with SQLite", "confidence": 0.5}, "thread": null}')
     with patch("context_engine.lenses._make_client", return_value=client):

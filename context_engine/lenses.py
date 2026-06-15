@@ -66,24 +66,30 @@ Extract:
 2. Thread signal — does this message start a new topic or resume an old one?
    Look for "let's talk about X", "switching to X", "going back to X",
    "what about X" as a topic shift.
+3. Insight — did the user or assistant surface a notable observation, pattern,
+   realization, or learning? Look for "I noticed", "interesting that",
+   "turns out", "the real issue is", "key insight", "TIL", or moments where
+   understanding deepens. NOT routine information — only genuine observations.
 
 Return ONLY valid JSON, no markdown:
-{{"decision": null, "thread": null}}
+{{"decision": null, "thread": null, "insight": null}}
 or with values:
 {{"decision": {{"content": "short description", "confidence": 0.4-0.7}},
-  "thread": {{"title": "short topic name", "signal": "new_topic or resume"}}}}"""
+  "thread": {{"title": "short topic name", "signal": "new_topic or resume"}},
+  "insight": {{"content": "short description of the observation", "confidence": 0.3-0.6}}}}"""
 
 _BATCH_PROMPT = """\
-Analyze these conversation turn pairs and extract decisions and thread signals.
+Analyze these conversation turn pairs and extract decisions, thread signals, and insights.
 
 {turns}
 
 For each turn return one entry. Extract:
 - decision: user commitment to a choice/direction (null if none)
 - thread: topic change or resumption signal (null if none)
+- insight: notable observation, pattern, or realization (null if none)
 
 Return ONLY a JSON array, no markdown:
-[{{"turn": 0, "decision": null, "thread": null}}, ...]"""
+[{{"turn": 0, "decision": null, "thread": null, "insight": null}}, ...]"""
 
 _CHUNK_SIZE = 10
 
@@ -125,6 +131,15 @@ def _entities_from_result(data: dict, user_msg: str) -> list:
                 "content": title,
                 "confidence": 0.5,
                 "signal": thread.get("signal", "new_topic"),
+            })
+    insight = data.get("insight")
+    if insight and isinstance(insight, dict):
+        content = str(insight.get("content", "")).strip()[:500]
+        if content:
+            entities.append({
+                "type": "insight",
+                "content": content,
+                "confidence": float(insight.get("confidence", 0.4)),
             })
     return entities
 
